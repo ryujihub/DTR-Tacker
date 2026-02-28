@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "resize-icons": "node ./scripts/resize-icons.js",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -20,6 +21,7 @@
     "date-fns": "^4.1.0",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
+    "expo-dev-client": "~6.0.20",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
@@ -47,6 +49,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "eas-cli": "^18.0.6",
+    "sharp": "^0.32.1",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"

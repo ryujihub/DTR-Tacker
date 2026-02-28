@@ -69,8 +69,10 @@ export const formatDurationFromMinutes = (minutes: number): string => {
  */
 export const calculateDailyTotalMinutes = (record: any): number => {
     let total = 0;
-    total += calculateMinutes(record.morningIn, record.morningOut);
-    total += calculateMinutes(record.afternoonIn, record.afternoonOut);
-    total += calculateMinutes(record.overtimeIn, record.overtimeOut);
+    // If a session has started but not ended, count minutes up to `now` so totals reflect ongoing work
+    const nowIso = new Date().toISOString();
+    total += calculateMinutes(record.morningIn, record.morningOut ?? nowIso);
+    total += calculateMinutes(record.afternoonIn, record.afternoonOut ?? nowIso);
+    total += calculateMinutes(record.overtimeIn, record.overtimeOut ?? nowIso);
     return total;
 };

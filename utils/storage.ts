@@ -15,6 +15,8 @@ export interface SystemSettings {
   use24Hour: boolean;
   theme: 'light' | 'dark' | 'system';
   hasSeenOnboarding: boolean;
+  /** Optional target goal in hours (e.g., 486) */
+  goalHours?: number | null;
 }
 
 const RECORDS_KEY = 'dtr_daily_records';
@@ -126,10 +128,10 @@ export const saveSettings = async (settings: SystemSettings) => {
 export const getSettings = async (): Promise<SystemSettings> => {
   try {
     const data = await getEngine().getItem(SETTINGS_KEY);
-    return data ? JSON.parse(data) : { use24Hour: true, theme: 'system', hasSeenOnboarding: false };
+    return data ? JSON.parse(data) : { use24Hour: true, theme: 'system', hasSeenOnboarding: false, goalHours: null };
   } catch (e) {
     console.error('[Storage] Error loading settings:', e);
-    return { use24Hour: true, theme: 'system', hasSeenOnboarding: false };
+    return { use24Hour: true, theme: 'system', hasSeenOnboarding: false, goalHours: null };
   }
 };
 

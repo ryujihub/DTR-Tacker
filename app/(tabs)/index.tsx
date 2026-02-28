@@ -3,6 +3,7 @@ import DtrHeader from '@/components/DtrHeader';
 import { ThemedText } from '@/components/themed-text';
 import { TimeSlot } from '@/components/TimeSlot';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useSettings } from '@/utils/SettingsContext';
 import {
     DailyRecord,
     getDailyRecords,
@@ -22,7 +23,7 @@ import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 const { width } = Dimensions.get('window');
 const ACTION_SIZE = width * 0.58;
@@ -32,6 +33,9 @@ export default function DashboardScreen() {
   const [todayRecord, setTodayRecord] = useState<DailyRecord | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const { updateSettings } = useSettings();
+  const [goalModalVisible, setGoalModalVisible] = useState(false);
+  const [goalInput, setGoalInput] = useState<string>('');
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -53,6 +57,19 @@ export default function DashboardScreen() {
   const loadSettingsData = async () => {
     const data = await getSettings();
     setSettings(data);
+  };
+
+  const openEditGoal = () => {
+    setGoalInput(settings?.goalHours ? String(settings.goalHours) : '');
+    setGoalModalVisible(true);
+  };
+
+  const saveGoal = async () => {
+    const parsed = Number(goalInput);
+    const goal = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    await updateSettings({ goalHours: goal });
+    setSettings(prev => prev ? { ...prev, goalHours: goal } : prev);
+    setGoalModalVisible(false);
   };
 
   const loadProfileData = async () => {
@@ -181,6 +198,29 @@ export default function DashboardScreen() {
                 </View>
               </View>
             </View>
+            {/* Goal Hours Card */}
+            {settings?.goalHours ? (
+              <View style={[styles.goalBox, { backgroundColor: cardBg, borderColor: borderCol }]}>
+                <View style={styles.goalHeader}>
+                  <ThemedText style={styles.statLabel}>GOAL</ThemedText>
+                  <TouchableOpacity onPress={openEditGoal}>
+                    <ThemedText style={styles.editLink}>Edit</ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <ThemedText style={[styles.statValue, { color: textColor }]}>{Math.round(settings.goalHours)}h</ThemedText>
+                <ThemedText style={styles.statSub}>{Math.round(totalMin / 60)}h logged • {Math.round(Math.max((settings.goalHours - totalMin / 60), 0))}h remaining</ThemedText>
+              </View>
+            ) : (
+              <View style={[styles.goalBox, { backgroundColor: cardBg, borderColor: borderCol }]}> 
+                <View style={styles.goalHeader}>
+                  <ThemedText style={styles.statLabel}>GOAL</ThemedText>
+                  <TouchableOpacity onPress={openEditGoal}>
+                    <ThemedText style={styles.editLink}>Set</ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <ThemedText style={styles.statSub}>No goal set</ThemedText>
+              </View>
+            )}
           </View>
         </View>
 
@@ -218,6 +258,33 @@ export default function DashboardScreen() {
           </View>
         </View>
       </ScrollView>
+      <Modal
+        visible={goalModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGoalModalVisible(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#00000066' }}>
+          <View style={{ width: '90%', backgroundColor: cardBg, borderRadius: 12, padding: 16 }}>
+            <ThemedText style={{ fontSize: 16, fontWeight: '800', marginBottom: 8 }}>Set Goal Hours</ThemedText>
+            <TextInput
+              value={goalInput}
+              onChangeText={setGoalInput}
+              placeholder="e.g. 486"
+              keyboardType="number-pad"
+              style={{ borderWidth: 1, borderColor: '#E5E5EA', borderRadius: 8, padding: 10, marginBottom: 12 }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+              <Pressable onPress={() => setGoalModalVisible(false)} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                <ThemedText style={{ color: '#8E8E93' }}>Cancel</ThemedText>
+              </Pressable>
+              <Pressable onPress={saveGoal} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                <ThemedText style={{ color: '#007AFF', fontWeight: '700' }}>Save</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -396,6 +463,30 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#007AFF',
+  },
+  goalBox: {
+    marginTop: 16,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  goalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  editLink: {
+    fontSize: 12,
+    color: '#007AFF',
+    fontWeight: '700',
+  },
+  statSub: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 6,
   },
   logsSection: {
     marginTop: 40,
