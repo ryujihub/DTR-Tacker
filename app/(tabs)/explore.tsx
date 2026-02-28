@@ -2,9 +2,11 @@ import { ManualEntryModal } from '@/components/ManualEntryModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { generatePDFReport } from '@/utils/report';
-import { DailyRecord, clearAllData, deleteDailyRecord, getDailyRecords, getProfile } from '@/utils/storage';
-import { calculateDailyTotalMinutes, formatDurationFromMinutes, formatTime } from '@/utils/time';
+import { clearAllData, DailyRecord, deleteDailyRecord, getDailyRecords, getProfile, getSettings, SystemSettings } from '@/utils/storage';
+import { calculateDailyTotalMinutes, formatDurationFromMinutes, formatTime, getRelativeDate } from '@/utils/time';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -12,13 +14,27 @@ import { Alert, FlatList, ScrollView, StyleSheet, TouchableOpacity, View } from 
 
 export default function HistoryScreen() {
   const [records, setRecords] = useState<DailyRecord[]>([]);
+  const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+
+  const colorScheme = useColorScheme();
+  const bgColor = useThemeColor({}, 'background');
+  const cardBg = useThemeColor({ light: '#FFF', dark: '#1C1C1E' }, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const borderCol = useThemeColor({ light: '#E5E5EA', dark: '#38383A' }, 'icon');
+  const headerBg = useThemeColor({ light: '#F9F9F9', dark: '#2C2C2E' }, 'background');
 
   useFocusEffect(
     useCallback(() => {
       loadRecords();
+      loadSettings();
     }, [])
   );
+
+  const loadSettings = async () => {
+    const data = await getSettings();
+    setSettings(data);
+  };
 
   const loadRecords = async () => {
     const data = await getDailyRecords();
@@ -64,51 +80,22 @@ export default function HistoryScreen() {
   const totalMin = records.reduce((acc, r) => acc + calculateDailyTotalMinutes(r), 0);
 
   const renderHeader = () => (
-    <View style={styles.tableHeader}>
+    <View style={[styles.tableHeader, { backgroundColor: headerBg }]}>
       <View style={[styles.cell, styles.dateCol]}><ThemedText style={styles.headerText}>DATE</ThemedText></View>
-      <View style={[styles.cell, styles.morningCol]}><ThemedText style={styles.headerText}>AM ARRIVAL/DEPT</ThemedText></View>
-      <View style={[styles.cell, styles.afternoonCol]}><ThemedText style={styles.headerText}>PM ARRIVAL/DEPT</ThemedText></View>
-      <View style={[styles.cell, styles.totalCol]}><ThemedText style={styles.headerText}>TOTAL</ThemedText></View>
+      <View style={[styles.cell, styles.morningCol]}><ThemedText style={styles.headerText}>MORNING</ThemedText></View>
+      <View style={[styles.cell, styles.afternoonCol]}><ThemedText style={styles.headerText}>AFTERNOON</ThemedText></View>
+      <View style={[styles.cell, styles.overtimeCol]}><ThemedText style={styles.headerText}>OVERTIME</ThemedText></View>
     </View>
   );
 
-  const renderItem = ({ item }: { item: DailyRecord }) => (
-    <TouchableOpacity
-      style={styles.tableRow}
-      onLongPress={() => handleDeleteRecord(item.date)}
-      activeOpacity={0.6}
-    >
-      <View style={[styles.cell, styles.dateCol]}>
-        <ThemedText style={styles.rowDateText}>{item.date.split('-').slice(1).join('/')}</ThemedText>
-      </View>
-      <View style={[styles.cell, styles.morningCol]}>
-        <View style={styles.timeCluster}>
-          <ThemedText style={styles.timeValText}>{formatTime(item.morningIn)}</ThemedText>
-          <IconSymbol name="chevron.right" size={8} color="#C7C7CC" />
-          <ThemedText style={styles.timeValText}>{formatTime(item.morningOut)}</ThemedText>
-        </View>
-      </View>
-      <View style={[styles.cell, styles.afternoonCol]}>
-        <View style={styles.timeCluster}>
-          <ThemedText style={styles.timeValText}>{formatTime(item.afternoonIn)}</ThemedText>
-          <IconSymbol name="chevron.right" size={8} color="#C7C7CC" />
-          <ThemedText style={styles.timeValText}>{formatTime(item.afternoonOut)}</ThemedText>
-        </View>
-      </View>
-      <View style={[styles.cell, styles.totalCol]}>
-        <ThemedText style={styles.totalValText}>
-          {formatDurationFromMinutes(calculateDailyTotalMinutes(item))}
-        </ThemedText>
-      </View>
-    </TouchableOpacity>
-  );
+  
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
       <View style={styles.header}>
         <View>
           <ThemedText style={styles.preTitle}>ATTENDANCE LOGS</ThemedText>
-          <ThemedText type="title" style={styles.title}>History</ThemedText>
+          <ThemedText type="title" style={[styles.title, { color: textColor }]}>History</ThemedText>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
@@ -117,15 +104,15 @@ export default function HistoryScreen() {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               generatePDFReport(records, profile);
             }}
-            style={styles.exportBtn}
+            style={[styles.exportBtn, { backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#EAF5FF' }]}
           >
-            <IconSymbol name="plus.app.fill" size={20} color="#007AFF" />
+            <IconSymbol name="square.and.arrow.down.fill" size={20} color="#007AFF" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addBtn}>
+          <TouchableOpacity onPress={() => setModalVisible(true)} style={[styles.addBtn, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <IconSymbol name="clock.fill" size={20} color="#007AFF" />
           </TouchableOpacity>
           {records.length > 0 && (
-            <TouchableOpacity onPress={handleClearAll} style={styles.deleteBtn}>
+            <TouchableOpacity onPress={handleClearAll} style={[styles.deleteBtn, { backgroundColor: cardBg, borderColor: borderCol }]}>
               <IconSymbol name="trash.fill" size={18} color="#FF3B30" />
             </TouchableOpacity>
           )}
@@ -150,15 +137,15 @@ export default function HistoryScreen() {
 
         <View style={styles.gridRow}>
           {/* Days Logged Box */}
-          <View style={[styles.bentoBox, styles.statBox]}>
+          <View style={[styles.bentoBox, styles.statBox, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <ThemedText style={styles.statLabel}>DAYS LOGGED</ThemedText>
-            <ThemedText style={styles.statValue}>{records.length}</ThemedText>
+            <ThemedText style={[styles.statValue, { color: textColor }]}>{records.length}</ThemedText>
             <ThemedText style={styles.statSub}>Current period</ThemedText>
           </View>
           {/* Average Box */}
-          <View style={[styles.bentoBox, styles.statBox]}>
+          <View style={[styles.bentoBox, styles.statBox, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <ThemedText style={styles.statLabel}>AVG. DAILY</ThemedText>
-            <ThemedText style={styles.statValue}>
+            <ThemedText style={[styles.statValue, { color: textColor }]}>
               {records.length > 0 ? formatDurationFromMinutes(Math.round(totalMin / records.length)) : '0h 0m'}
             </ThemedText>
             <ThemedText style={styles.statSub}>Rendered/day</ThemedText>
@@ -167,14 +154,45 @@ export default function HistoryScreen() {
       </View>
 
       <View style={styles.tableWrapper}>
-        <View style={styles.tableCard}>
+        <View style={[styles.tableCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.table}>
               {renderHeader()}
               <FlatList
                 data={[...records].sort((a, b) => b.date.localeCompare(a.date))}
                 keyExtractor={(item) => item.date}
-                renderItem={renderItem}
+                renderItem={(props) => {
+                  const item = props.item;
+                  return (
+                    <TouchableOpacity
+                      style={[styles.tableRow, { borderBottomColor: borderCol }]}
+                      onLongPress={() => handleDeleteRecord(item.date)}
+                      activeOpacity={0.6}
+                    >
+                      <View style={[styles.cell, styles.dateCol]}>
+                        <ThemedText style={styles.rowDateText}>{getRelativeDate(item.date)}</ThemedText>
+                      </View>
+                      <View style={[styles.cell, styles.morningCol]}>
+                        <View style={styles.timeCluster}>
+                          <ThemedText style={[styles.timeValText, { color: textColor }]}>{formatTime(item.morningIn, settings?.use24Hour)}</ThemedText>
+                          <ThemedText style={[styles.timeValText, { color: textColor }]}>{formatTime(item.morningOut, settings?.use24Hour)}</ThemedText>
+                        </View>
+                      </View>
+                      <View style={[styles.cell, styles.afternoonCol]}>
+                        <View style={styles.timeCluster}>
+                          <ThemedText style={[styles.timeValText, { color: textColor }]}>{formatTime(item.afternoonIn, settings?.use24Hour)}</ThemedText>
+                          <ThemedText style={[styles.timeValText, { color: textColor }]}>{formatTime(item.afternoonOut, settings?.use24Hour)}</ThemedText>
+                        </View>
+                      </View>
+                      <View style={[styles.cell, styles.overtimeCol]}>
+                        <View style={styles.timeCluster}>
+                          <ThemedText style={[styles.timeValText, { color: textColor }]}>{formatTime(item.overtimeIn, settings?.use24Hour)}</ThemedText>
+                          <ThemedText style={[styles.timeValText, { color: textColor }]}>{formatTime(item.overtimeOut, settings?.use24Hour)}</ThemedText>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
@@ -288,7 +306,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   mainTotalText: {
-    fontSize: 36,
+    fontSize: 30,
     fontWeight: '800',
     color: '#FFF',
     letterSpacing: -1,
@@ -332,26 +350,21 @@ const styles = StyleSheet.create({
   },
   tableCard: {
     flex: 1,
-    backgroundColor: '#FFF',
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E5E5EA',
   },
   table: {
     minWidth: 460,
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#F9F9F9',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
     paddingVertical: 12,
   },
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F7',
     paddingVertical: 12,
   },
   cell: {
@@ -366,8 +379,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   dateCol: { width: 70 },
-  morningCol: { width: 140 },
-  afternoonCol: { width: 140 },
+  morningCol: { width: 120 },
+  afternoonCol: { width: 120 },
+  overtimeCol: { width: 120 },
   totalCol: { width: 90 },
 
   rowDateText: {

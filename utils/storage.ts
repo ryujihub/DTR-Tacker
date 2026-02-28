@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 
 export interface DailyRecord {
   date: string; // YYYY-MM-DD
@@ -12,41 +11,67 @@ export interface UserProfile {
   name: string; position: string; dept: string;
 }
 
+export interface SystemSettings {
+  use24Hour: boolean;
+  theme: 'light' | 'dark' | 'system';
+  hasSeenOnboarding: boolean;
+}
+
 const RECORDS_KEY = 'dtr_daily_records';
 const PROFILE_KEY = 'dtr_user_profile';
+const SETTINGS_KEY = 'dtr_system_settings';
 
-// Session-level cache to ensure work is kept even if storage fails temporarily
-let sessionRecords: DailyRecord[] | null = null;
-let sessionProfile: UserProfile | null = null;
+// --- ROBUST STORAGE ENGINE ---
+let _engine: any = null;
+const memoryBackup = new Map<string, string>();
 
 const getEngine = () => {
-  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-    return localStorage;
-  }
+  if (_engine) return _engine;
+
+  // 1. Try Browser/Polyfilled LocalStorage
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.setItem) {
+      // Quick test to see if it actually works (some environments have it but it throws)
+      localStorage.setItem('__test__', '1');
+      localStorage.removeItem('__test__');
+
+      _engine = {
+        getItem: (k: string) => Promise.resolve(localStorage.getItem(k)),
+        setItem: (k: string, v: string) => { localStorage.setItem(k, v); return Promise.resolve(); },
+        removeItem: (k: string) => { localStorage.removeItem(k); return Promise.resolve(); }
+      };
+      return _engine;
+    }
+  } catch (e) { }
+
+  // 2. Try Native AsyncStorage
   try {
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    if (AsyncStorage) return AsyncStorage;
-  } catch (e) {
-    console.warn('[Storage] Native engine not ready yet.');
-  }
-  return null;
+    if (AsyncStorage && AsyncStorage.getItem) {
+      _engine = AsyncStorage;
+      return _engine;
+    }
+  } catch (e) { }
+
+  // 3. Fallback: In-Memory (Logs will work within a single app session)
+  console.warn('[Storage] Falling back to Memory storage. Changes will NOT persist after app restart.');
+  _engine = {
+    getItem: (k: string) => Promise.resolve(memoryBackup.get(k) || null),
+    setItem: (k: string, v: string) => { memoryBackup.set(k, v); return Promise.resolve(); },
+    removeItem: (k: string) => { memoryBackup.delete(k); return Promise.resolve(); }
+  };
+  return _engine;
 };
 
+// --- API ---
+
 export const getDailyRecords = async (): Promise<DailyRecord[]> => {
-  // 1. Check session cache first
-  if (sessionRecords) return sessionRecords;
-
   try {
-    const engine = getEngine();
-    if (!engine) return [];
-
-    const data = await engine.getItem(RECORDS_KEY);
-    const parsed = data ? JSON.parse(data) : [];
-    sessionRecords = parsed; // Sync to cache
-    return parsed;
+    const data = await getEngine().getItem(RECORDS_KEY);
+    return data ? JSON.parse(data) : [];
   } catch (e) {
     console.error('[Storage] Error loading records:', e);
-    return sessionRecords || [];
+    return [];
   }
 };
 
@@ -54,20 +79,9 @@ export const saveDailyRecord = async (record: DailyRecord) => {
   try {
     const existing = await getDailyRecords();
     const index = existing.findIndex(r => r.date === record.date);
-
-    if (index > -1) {
-      existing[index] = record;
-    } else {
-      existing.unshift(record);
-    }
-
+    if (index > -1) existing[index] = record; else existing.unshift(record);
     existing.sort((a, b) => b.date.localeCompare(a.date));
-    sessionRecords = [...existing]; // Update session cache
-
-    const engine = getEngine();
-    if (engine) {
-      await engine.setItem(RECORDS_KEY, JSON.stringify(existing));
-    }
+    await getEngine().setItem(RECORDS_KEY, JSON.stringify(existing));
   } catch (e) {
     console.error('[Storage] Error saving record:', e);
   }
@@ -77,12 +91,7 @@ export const deleteDailyRecord = async (date: string) => {
   try {
     const existing = await getDailyRecords();
     const filtered = existing.filter(r => r.date !== date);
-    sessionRecords = filtered;
-
-    const engine = getEngine();
-    if (engine) {
-      await engine.setItem(RECORDS_KEY, JSON.stringify(filtered));
-    }
+    await getEngine().setItem(RECORDS_KEY, JSON.stringify(filtered));
   } catch (e) {
     console.error('[Storage] Error deleting record:', e);
   }
@@ -90,40 +99,46 @@ export const deleteDailyRecord = async (date: string) => {
 
 export const saveProfile = async (profile: UserProfile) => {
   try {
-    sessionProfile = profile;
-    const engine = getEngine();
-    if (engine) {
-      await engine.setItem(PROFILE_KEY, JSON.stringify(profile));
-    }
+    await getEngine().setItem(PROFILE_KEY, JSON.stringify(profile));
   } catch (e) {
     console.error('[Storage] Error saving profile:', e);
   }
 };
 
 export const getProfile = async (): Promise<UserProfile> => {
-  if (sessionProfile) return sessionProfile;
-
   try {
-    const engine = getEngine();
-    if (!engine) return { name: '', position: '', dept: '' };
-
-    const data = await engine.getItem(PROFILE_KEY);
-    const parsed = data ? JSON.parse(data) : { name: '', position: '', dept: '' };
-    sessionProfile = parsed;
-    return parsed;
+    const data = await getEngine().getItem(PROFILE_KEY);
+    return data ? JSON.parse(data) : { name: '', position: '', dept: '' };
   } catch (e) {
-    return sessionProfile || { name: '', position: '', dept: '' };
+    console.error('[Storage] Error loading profile:', e);
+    return { name: '', position: '', dept: '' };
+  }
+};
+
+export const saveSettings = async (settings: SystemSettings) => {
+  try {
+    await getEngine().setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.error('[Storage] Error saving settings:', e);
+  }
+};
+
+export const getSettings = async (): Promise<SystemSettings> => {
+  try {
+    const data = await getEngine().getItem(SETTINGS_KEY);
+    return data ? JSON.parse(data) : { use24Hour: true, theme: 'system', hasSeenOnboarding: false };
+  } catch (e) {
+    console.error('[Storage] Error loading settings:', e);
+    return { use24Hour: true, theme: 'system', hasSeenOnboarding: false };
   }
 };
 
 export const clearAllData = async () => {
   try {
-    sessionRecords = null;
-    sessionProfile = null;
-    const engine = getEngine();
-    if (engine) {
-      await engine.removeItem(RECORDS_KEY);
-      await engine.removeItem(PROFILE_KEY);
-    }
-  } catch (e) { }
+    await getEngine().removeItem(RECORDS_KEY);
+    await getEngine().removeItem(PROFILE_KEY);
+    await getEngine().removeItem(SETTINGS_KEY);
+  } catch (e) {
+    console.error('[Storage] Error clearing data:', e);
+  }
 };

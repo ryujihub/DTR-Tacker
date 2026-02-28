@@ -1,16 +1,22 @@
+
 import DtrHeader from '@/components/DtrHeader';
 import { ThemedText } from '@/components/themed-text';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { TimeSlot } from '@/components/TimeSlot';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import {
-  DailyRecord,
-  getDailyRecords,
-  saveDailyRecord
+    DailyRecord,
+    getDailyRecords,
+    getProfile,
+    getSettings,
+    saveDailyRecord,
+    SystemSettings,
+    UserProfile
 } from '@/utils/storage';
 import {
-  calculateDailyTotalMinutes,
-  formatDate,
-  formatDurationFromMinutes,
-  formatTime
+    calculateDailyTotalMinutes,
+    formatDate,
+    formatDurationFromMinutes,
+    getTimeGreeting
 } from '@/utils/time';
 import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
@@ -19,10 +25,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 const { width } = Dimensions.get('window');
+const ACTION_SIZE = width * 0.58;
 
 export default function DashboardScreen() {
   const [now, setNow] = useState(new Date());
   const [todayRecord, setTodayRecord] = useState<DailyRecord | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [settings, setSettings] = useState<SystemSettings | null>(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -35,9 +44,21 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadTodayData();
+      loadProfileData();
+      loadSettingsData();
       Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true }).start();
-    }, [])
+    }, [slideAnim])
   );
+
+  const loadSettingsData = async () => {
+    const data = await getSettings();
+    setSettings(data);
+  };
+
+  const loadProfileData = async () => {
+    const data = await getProfile();
+    setProfile(data);
+  };
 
   const loadTodayData = async () => {
     const records = await getDailyRecords();
@@ -59,36 +80,40 @@ export default function DashboardScreen() {
   };
 
   const currentStatus = () => {
-    if (!todayRecord) return { label: 'Syncing', color: '#8E8E93', active: false };
+    if (!todayRecord) return { label: 'Syncing...', color: '#8E8E93', active: false };
 
-    if (!todayRecord.morningIn) return { label: 'AM IN', color: '#007AFF', action: 'morningIn', active: false };
-    if (!todayRecord.morningOut) return { label: 'AM OUT', color: '#34C759', action: 'morningOut', active: true };
-    if (!todayRecord.afternoonIn) return { label: 'PM IN', color: '#007AFF', action: 'afternoonIn', active: false };
-    if (!todayRecord.afternoonOut) return { label: 'PM OUT', color: '#34C759', action: 'afternoonOut', active: true };
-    if (!todayRecord.overtimeIn) return { label: 'OT IN', color: '#AF52DE', action: 'overtimeIn', active: false };
-    if (!todayRecord.overtimeOut) return { label: 'OT OUT', color: '#AF52DE', action: 'overtimeOut', active: true };
+    if (!todayRecord.morningIn) return { label: 'CLOCK IN', subLabel: 'MORNING', color: '#007AFF', action: 'morningIn', active: false };
+    if (!todayRecord.morningOut) return { label: 'CLOCK OUT', subLabel: 'MORNING', color: '#34C759', action: 'morningOut', active: true };
+    if (!todayRecord.afternoonIn) return { label: 'CLOCK IN', subLabel: 'AFTERNOON', color: '#007AFF', action: 'afternoonIn', active: false };
+    if (!todayRecord.afternoonOut) return { label: 'CLOCK OUT', subLabel: 'AFTERNOON', color: '#34C759', action: 'afternoonOut', active: true };
+    if (!todayRecord.overtimeIn) return { label: 'CLOCK IN', subLabel: 'OVERTIME', color: '#AF52DE', action: 'overtimeIn', active: false };
+    if (!todayRecord.overtimeOut) return { label: 'CLOCK OUT', subLabel: 'OVERTIME', color: '#AF52DE', action: 'overtimeOut', active: true };
 
-    return { label: 'DONE', color: '#FF9500', active: false, finished: true };
+    return { label: 'WORK DONE', subLabel: 'FOR TODAY', color: '#FF9500', active: false, finished: true };
   };
 
   const status = currentStatus();
+  const bgColor = useThemeColor({}, 'background');
+  const cardBg = useThemeColor({ light: '#FFF', dark: '#1C1C1E' }, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const borderCol = useThemeColor({ light: '#E5E5EA', dark: '#38383A' }, 'icon');
 
   useEffect(() => {
     if (status.active) {
       Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.05, duration: 1000, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.05, duration: 2000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
         ])
       ).start();
     } else {
       pulseAnim.setValue(1);
     }
-  }, [status.active]);
+  }, [status.active, pulseAnim]);
 
   const handleClockAction = async () => {
     if (!todayRecord || !status.action) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const updated = { ...todayRecord, [status.action]: new Date().toISOString() };
     updated.totalHours = calculateDailyTotalMinutes(updated) / 60;
     setTodayRecord(updated);
@@ -102,98 +127,97 @@ export default function DashboardScreen() {
   const progress = Math.min(totalMin / 480, 1);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <Animated.View style={{ transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }], opacity: slideAnim }}>
-        <DtrHeader />
-      </Animated.View>
+    <View style={[styles.container, { backgroundColor: bgColor }]}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Animated.View style={[styles.headerSection, { opacity: slideAnim }]}>
+          <DtrHeader />
+        </Animated.View>
 
-      <View style={styles.bentoGrid}>
-        {/* Row 1: Clock (Main Bento Box) */}
-        <View style={[styles.bentoBox, styles.largeBox]}>
-          <ThemedText style={styles.dateLabel}>{formatDate(now).toUpperCase()}</ThemedText>
-          <ThemedText style={styles.clockValue}>{format(now, 'HH:mm:ss')}</ThemedText>
-          <View style={styles.tagRow}>
-            <View style={[styles.statusTag, { backgroundColor: status.color + '15' }]}>
-              <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-              <ThemedText style={[styles.statusText, { color: status.color }]}>{status.label}</ThemedText>
-            </View>
+        <View style={styles.heroSection}>
+          <View style={styles.greetingGroup}>
+            <ThemedText style={styles.greeting}>{getTimeGreeting()},</ThemedText>
+            <ThemedText style={[styles.userName, { color: textColor }]}>{profile?.name || 'User'}</ThemedText>
+            <ThemedText style={styles.dateBadge}>{formatDate(now).toUpperCase()}</ThemedText>
           </View>
-        </View>
 
-        {/* Row 2: Action + Progress (Side by Side) */}
-        <View style={styles.gridRow}>
-          <TouchableOpacity
-            style={[styles.bentoBox, styles.actionBox, { shadowColor: status.color }]}
-            onPress={handleClockAction}
-            disabled={status.finished}
-            activeOpacity={0.8}
-          >
-            <Animated.View style={[styles.btnInner, { backgroundColor: status.color }]}>
-              <IconSymbol name={status.finished ? "checkmark.seal.fill" : "clock.fill"} size={28} color="#FFF" />
-              <ThemedText style={styles.btnLabel}>Log Time</ThemedText>
-            </Animated.View>
-          </TouchableOpacity>
+          <View style={styles.actionCenter}>
+            <View style={styles.ringContainer}>
+              {/* Progress Ring Background */}
+              <View style={[styles.ringBg, { borderColor: borderCol }]} />
 
-          <View style={[styles.bentoBox, styles.statBox]}>
-            <ThemedText style={styles.statLabel}>GOAL PROGRESS</ThemedText>
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBg}>
-                <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: status.color }]} />
+              {/* Progress Ring Simulation */}
+              <View style={[styles.ringFill, {
+                transform: [{ rotate: `${progress * 360}deg` }],
+                borderColor: status.color,
+                opacity: progress > 0 ? 1 : 0
+              }]} />
+
+              <TouchableOpacity
+                style={[styles.mainButton, { shadowColor: status.color, backgroundColor: cardBg }]}
+                onPress={handleClockAction}
+                disabled={status.finished}
+                activeOpacity={0.9}
+              >
+                <Animated.View style={[styles.buttonInner, { transform: [{ scale: pulseAnim }], backgroundColor: status.finished ? bgColor : cardBg, borderColor: borderCol }]}>
+                  <ThemedText style={[styles.clockTime, { color: textColor }]}>{format(now, settings?.use24Hour === false ? 'hh:mm' : 'HH:mm')}</ThemedText>
+                  {settings?.use24Hour === false && <ThemedText style={styles.clockAmPm}>{format(now, 'a')}</ThemedText>}
+                  <ThemedText style={styles.clockSeconds}>{format(now, 'ss')}</ThemedText>
+
+                  <View style={[styles.statusTag, { backgroundColor: status.color + '15' }]}>
+                    <ThemedText style={[styles.statusLabel, { color: status.color }]}>{status.label}</ThemedText>
+                    <ThemedText style={[styles.statusSubLabel, { color: status.color }]}>{status.subLabel}</ThemedText>
+                  </View>
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.quickStats}>
+              <View style={[styles.statItem, { backgroundColor: cardBg, borderColor: borderCol }]}>
+                <ThemedText style={styles.statLabel}>DAILY PROGRESS</ThemedText>
+                <View style={styles.statValueRow}>
+                  <ThemedText style={[styles.statValue, { color: textColor }]}>{formatDurationFromMinutes(totalMin)}</ThemedText>
+                  <View style={[styles.statDivider, { backgroundColor: borderCol }]} />
+                  <ThemedText style={styles.statPercentage}>{Math.round(progress * 100)}%</ThemedText>
+                </View>
               </View>
-              <ThemedText style={styles.progressVal}>{Math.round(progress * 100)}%</ThemedText>
-            </View>
-            <ThemedText style={styles.durationValue}>{formatDurationFromMinutes(totalMin)}</ThemedText>
-          </View>
-        </View>
-
-        {/* Row 3: Session Logs (Two Columns) */}
-        <View style={styles.gridRow}>
-          <View style={[styles.bentoBox, styles.halfBox]}>
-            <View style={styles.sessionBoxHeader}>
-              <IconSymbol name="sun.max.fill" size={12} color="#8E8E93" />
-              <ThemedText style={styles.sessionBoxTitle}>MORNING</ThemedText>
-            </View>
-            <SessionRow type="IN" val={todayRecord?.morningIn} />
-            <SessionRow type="OUT" val={todayRecord?.morningOut} />
-          </View>
-
-          <View style={[styles.bentoBox, styles.halfBox]}>
-            <View style={styles.sessionBoxHeader}>
-              <IconSymbol name="cloud.sun.fill" size={12} color="#8E8E93" />
-              <ThemedText style={styles.sessionBoxTitle}>AFTERNOON</ThemedText>
-            </View>
-            <SessionRow type="IN" val={todayRecord?.afternoonIn} />
-            <SessionRow type="OUT" val={todayRecord?.afternoonOut} />
-          </View>
-        </View>
-
-        {/* Row 4: Overtime (Full Width Stats) */}
-        <View style={[styles.bentoBox, styles.miniStatsBox]}>
-          <View style={styles.miniStatsRow}>
-            <View style={styles.miniStatItem}>
-              <ThemedText style={styles.miniLabel}>OT START</ThemedText>
-              <ThemedText style={styles.miniValue}>{formatTime(todayRecord?.overtimeIn)}</ThemedText>
-            </View>
-            <View style={styles.miniStatItem}>
-              <ThemedText style={styles.miniLabel}>OT END</ThemedText>
-              <ThemedText style={styles.miniValue}>{formatTime(todayRecord?.overtimeOut)}</ThemedText>
-            </View>
-            <View style={styles.miniStatItem}>
-              <ThemedText style={styles.miniLabel}>TOTAL REND.</ThemedText>
-              <ThemedText style={styles.miniValue}>{formatDurationFromMinutes(totalMin)}</ThemedText>
             </View>
           </View>
         </View>
-      </View>
-    </ScrollView>
-  );
-}
 
-function SessionRow({ type, val }: { type: string, val?: string | null }) {
-  return (
-    <View style={styles.sessionItem}>
-      <ThemedText style={styles.sessionItemType}>{type}</ThemedText>
-      <ThemedText style={styles.sessionItemVal}>{formatTime(val)}</ThemedText>
+        <View style={styles.logsSection}>
+          <View style={styles.sectionHeader}>
+            <ThemedText style={styles.sectionTitle}>SHIFTS & LOGS</ThemedText>
+            <View style={[styles.sectionLine, { backgroundColor: borderCol }]} />
+          </View>
+
+          <View style={styles.logsGrid}>
+            <TimeSlot
+              label="MORNING"
+              icon="sun.max.fill"
+              timeIn={todayRecord?.morningIn}
+              timeOut={todayRecord?.morningOut}
+              colors={['#FF9500', '#FFCC00']}
+              isActive={status.action?.startsWith('morning')}
+            />
+            <TimeSlot
+              label="AFTERNOON"
+              icon="cloud.sun.fill"
+              timeIn={todayRecord?.afternoonIn}
+              timeOut={todayRecord?.afternoonOut}
+              colors={['#007AFF', '#5AC8FA']}
+              isActive={status.action?.startsWith('afternoon')}
+            />
+            <TimeSlot
+              label="OVERTIME"
+              icon="moon.stars.fill"
+              timeIn={todayRecord?.overtimeIn}
+              timeOut={todayRecord?.overtimeOut}
+              colors={['#5856D6', '#AF52DE']}
+              isActive={status.action?.startsWith('overtime')}
+            />
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -201,181 +225,200 @@ function SessionRow({ type, val }: { type: string, val?: string | null }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F8F9FB',
   },
   scrollContent: {
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingBottom: 60,
   },
-  bentoGrid: {
-    paddingHorizontal: 20,
-    gap: 12,
-    marginTop: 20,
+  headerSection: {
+    paddingTop: 50,
   },
-  bentoBox: {
-    backgroundColor: '#FFFFFF',
+  heroSection: {
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  greetingGroup: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  greeting: {
+    fontSize: 14,
+    color: '#8E8E93',
+    fontWeight: '500',
+  },
+  userName: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#1C1C1E',
+    marginTop: 2,
+  },
+  dateBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#007AFF',
+    letterSpacing: 2,
+    marginTop: 8,
+    backgroundColor: '#007AFF10',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  actionCenter: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  ringContainer: {
+    width: ACTION_SIZE + 32,
+    height: ACTION_SIZE + 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  ringBg: {
+    position: 'absolute',
+    width: ACTION_SIZE + 24,
+    height: ACTION_SIZE + 24,
+    borderRadius: (ACTION_SIZE + 24) / 2,
+    borderWidth: 8,
+    borderColor: '#EFEFF4',
+  },
+  ringFill: {
+    position: 'absolute',
+    width: ACTION_SIZE + 24,
+    height: ACTION_SIZE + 24,
+    borderRadius: (ACTION_SIZE + 24) / 2,
+    borderWidth: 8,
+    borderLeftColor: 'transparent',
+    borderBottomColor: 'transparent',
+  },
+  mainButton: {
+    width: ACTION_SIZE,
+    height: ACTION_SIZE,
+    borderRadius: ACTION_SIZE / 2,
+    backgroundColor: '#FFF',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
+    padding: 10,
+  },
+  buttonInner: {
+    flex: 1,
+    borderRadius: ACTION_SIZE / 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F2F2F7',
+  },
+  clockTime: {
+    fontSize: 33,
+    fontWeight: '200',
+    color: '#1C1C1E',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    letterSpacing: -2,
+  },
+  clockAmPm: {
+    position: 'absolute',
+    top: '30%',
+    right: '25%',
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#007AFF',
+  },
+  clockSeconds: {
+    position: 'absolute',
+    top: '56%',
+    right: '28%',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#C7C7CC',
+  },
+  statusTag: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginTop: 10,
+  },
+  statusLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  statusSubLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: 1,
+    opacity: 0.7,
+  },
+  quickStats: {
+    marginTop: 40,
+    width: '100%',
+  },
+  statItem: {
+    backgroundColor: '#FFF',
     borderRadius: 24,
     padding: 20,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E5E5EA',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.02,
     shadowRadius: 10,
-    elevation: 2,
-  },
-  largeBox: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  dateLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#8E8E93',
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  clockValue: {
-    fontSize: 52,
-    fontWeight: '300',
-    color: '#1C1C1E',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    letterSpacing: -1,
-  },
-  tagRow: {
-    marginTop: 16,
-  },
-  statusTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  gridRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionBox: {
-    flex: 1.2,
-    padding: 8,
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  btnInner: {
-    flex: 1,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  btnLabel: {
-    color: '#FFF',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  statBox: {
-    flex: 2,
-    justifyContent: 'center',
   },
   statLabel: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '800',
     color: '#8E8E93',
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 4,
-  },
-  progressBg: {
-    flex: 1,
-    height: 6,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  progressVal: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#1C1C1E',
-  },
-  durationValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1C1C1E',
-  },
-  halfBox: {
-    flex: 1,
-    padding: 16,
-  },
-  sessionBoxHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-  },
-  sessionBoxTitle: {
-    fontSize: 8,
-    fontWeight: '900',
-    color: '#8E8E93',
-    letterSpacing: 1,
-  },
-  sessionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    letterSpacing: 1.5,
     marginBottom: 8,
   },
-  sessionItemType: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#C7C7CC',
-  },
-  sessionItemVal: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1C1C1E',
-  },
-  miniStatsBox: {
-    padding: 16,
-  },
-  miniStatsRow: {
+  statValueRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  miniStatItem: {
     alignItems: 'center',
+    gap: 15,
   },
-  miniLabel: {
-    fontSize: 7,
+  statValue: {
+    fontSize: 24,
     fontWeight: '900',
-    color: '#C7C7CC',
-    marginBottom: 2,
-  },
-  miniValue: {
-    fontSize: 11,
-    fontWeight: '700',
     color: '#1C1C1E',
-  }
+  },
+  statDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#E5E5EA',
+  },
+  statPercentage: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#007AFF',
+  },
+  logsSection: {
+    marginTop: 40,
+    paddingHorizontal: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#8E8E93',
+    letterSpacing: 2,
+  },
+  sectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E5EA',
+  },
+  logsGrid: {
+    gap: 12,
+  },
 });

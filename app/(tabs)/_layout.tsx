@@ -3,10 +3,10 @@ import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  
 
   return (
     <Tabs
@@ -37,6 +37,13 @@ export default function TabLayout() {
         options={{
           title: 'History',
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="list.bullet" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="gearshape" color={color} />,
         }}
       />
     </Tabs>

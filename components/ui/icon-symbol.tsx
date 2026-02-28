@@ -20,6 +20,15 @@ const MAPPING = {
   'list.bullet': 'list',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  'plus.app.fill': 'add-box',
+  'square.and.arrow.down.fill': 'save',
+  'trash.fill': 'delete',
+  'sun.max.fill': 'light-mode',
+  'moon.fill': 'dark-mode',
+  'iphone': 'phone-android',
+  'checkmark.circle.fill': 'check-circle',
+  'person.crop.circle.fill': 'account-circle',
+  'questionmark.circle.fill': 'help-outline',
 } as IconMapping;
 
 /**
