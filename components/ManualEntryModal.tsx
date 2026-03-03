@@ -47,13 +47,21 @@ export function ManualEntryModal({ visible, onClose, onSave }: ManualEntryModalP
         setShowPicker(true);
     };
 
+    /** Stamps a picked time onto the selected `date` so in/out always share the same calendar day. */
+    const stampDate = (time: Date | null): string | null => {
+        if (!time) return null;
+        const d = new Date(date);
+        d.setHours(time.getHours(), time.getMinutes(), 0, 0);
+        return d.toISOString();
+    };
+
     const handleSave = async () => {
         const dailyRecord: DailyRecord = {
             date: format(date, 'yyyy-MM-dd'),
-            morningIn: morningIn?.toISOString() || null,
-            morningOut: morningOut?.toISOString() || null,
-            afternoonIn: afternoonIn?.toISOString() || null,
-            afternoonOut: afternoonOut?.toISOString() || null,
+            morningIn: stampDate(morningIn),
+            morningOut: stampDate(morningOut),
+            afternoonIn: stampDate(afternoonIn),
+            afternoonOut: stampDate(afternoonOut),
             overtimeIn: null,
             overtimeOut: null,
             totalHours: 0,

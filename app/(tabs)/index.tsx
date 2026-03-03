@@ -5,19 +5,19 @@ import { TimeSlot } from '@/components/TimeSlot';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useSettings } from '@/utils/SettingsContext';
 import {
-    DailyRecord,
-    getDailyRecords,
-    getProfile,
-    getSettings,
-    saveDailyRecord,
-    SystemSettings,
-    UserProfile
+  DailyRecord,
+  getDailyRecords,
+  getProfile,
+  getSettings,
+  saveDailyRecord,
+  SystemSettings,
+  UserProfile
 } from '@/utils/storage';
 import {
-    calculateDailyTotalMinutes,
-    formatDate,
-    formatDurationFromMinutes,
-    getTimeGreeting
+  calculateDailyTotalMinutes,
+  formatDate,
+  formatDurationFromMinutes,
+  getTimeGreeting
 } from '@/utils/time';
 import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
@@ -141,7 +141,8 @@ export default function DashboardScreen() {
   };
 
   const totalMin = todayRecord ? calculateDailyTotalMinutes(todayRecord) : 0;
-  const progress = Math.min(totalMin / 480, 1);
+  const goalMin = settings?.goalHours ? settings.goalHours * 60 : 480;
+  const progress = Math.min(totalMin / goalMin, 1);
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
@@ -190,7 +191,7 @@ export default function DashboardScreen() {
 
             <View style={styles.quickStats}>
               <View style={[styles.statItem, { backgroundColor: cardBg, borderColor: borderCol }]}>
-                <ThemedText style={styles.statLabel}>DAILY PROGRESS</ThemedText>
+                <ThemedText style={styles.statLabel}>GOAL PROGRESS</ThemedText>
                 <View style={styles.statValueRow}>
                   <ThemedText style={[styles.statValue, { color: textColor }]}>{formatDurationFromMinutes(totalMin)}</ThemedText>
                   <View style={[styles.statDivider, { backgroundColor: borderCol }]} />
@@ -208,10 +209,10 @@ export default function DashboardScreen() {
                   </TouchableOpacity>
                 </View>
                 <ThemedText style={[styles.statValue, { color: textColor }]}>{Math.round(settings.goalHours)}h</ThemedText>
-                <ThemedText style={styles.statSub}>{Math.round(totalMin / 60)}h logged • {Math.round(Math.max((settings.goalHours - totalMin / 60), 0))}h remaining</ThemedText>
+                <ThemedText style={styles.statSub}>{formatDurationFromMinutes(totalMin)} logged • {formatDurationFromMinutes(Math.max(goalMin - totalMin, 0))} remaining</ThemedText>
               </View>
             ) : (
-              <View style={[styles.goalBox, { backgroundColor: cardBg, borderColor: borderCol }]}> 
+              <View style={[styles.goalBox, { backgroundColor: cardBg, borderColor: borderCol }]}>
                 <View style={styles.goalHeader}>
                   <ThemedText style={styles.statLabel}>GOAL</ThemedText>
                   <TouchableOpacity onPress={openEditGoal}>
