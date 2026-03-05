@@ -1,5 +1,6 @@
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { getTotalHours } from '@/utils/prediction';
 import { useSettings } from '@/utils/SettingsContext';
 import {
   DailyRecord,
@@ -45,6 +46,7 @@ const SHIFTS = [
 
 export default function DashboardScreen() {
   const [now, setNow] = useState(new Date());
+  const [allRecords, setAllRecords] = useState<DailyRecord[]>([]);
   const [todayRecord, setTodayRecord] = useState<DailyRecord | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -72,6 +74,7 @@ export default function DashboardScreen() {
     const [records, prof, sett] = await Promise.all([getDailyRecords(), getProfile(), getSettings()]);
     setProfile(prof);
     setSettings(sett);
+    setAllRecords(records);
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const today = records.find(r => r.date === todayStr);
     if (today) {
@@ -107,10 +110,13 @@ export default function DashboardScreen() {
     }
   }, [status.active]);
 
-  // ─── Progress bar animation ──────────────────────────────────────────────────
-  const totalMin = todayRecord ? calculateDailyTotalMinutes(todayRecord) : 0;
+  // ─── Progress — uses ALL-TIME total to match Calendar ───────────────────────
+  // todayMin is still used for live clock-in progress within the current session
+  const todayMin = todayRecord ? calculateDailyTotalMinutes(todayRecord) : 0;
+  const allTimeTotalH = getTotalHours(allRecords);          // same as Calendar
+  const allTimeTotalMin = allTimeTotalH * 60;
   const goalMin = settings?.goalHours ? settings.goalHours * 60 : 480;
-  const progress = Math.min(totalMin / goalMin, 1);
+  const progress = Math.min(allTimeTotalMin / goalMin, 1);
 
   useEffect(() => {
     Animated.timing(barAnim, { toValue: progress, duration: 800, useNativeDriver: false }).start();
@@ -187,7 +193,7 @@ export default function DashboardScreen() {
               <Animated.View style={[styles.progressFill, { width: barWidth, backgroundColor: status.color }]} />
             </View>
             <View style={styles.progressLabels}>
-              <ThemedText style={styles.progressText}>{formatDurationFromMinutes(totalMin)} logged</ThemedText>
+              <ThemedText style={styles.progressText}>{formatDurationFromMinutes(allTimeTotalMin)} logged</ThemedText>
               <ThemedText style={styles.progressText}>{Math.round(progress * 100)}%</ThemedText>
             </View>
           </View>
@@ -209,9 +215,9 @@ export default function DashboardScreen() {
         {/* ═══ STATS STRIP ════════════════════════════════════════════════════ */}
         <View style={styles.statsStrip}>
           {[
-            { label: 'TODAY', value: formatDurationFromMinutes(totalMin) },
-            { label: 'GOAL', value: settings?.goalHours ? `${Math.round(settings.goalHours)}h` : '—' },
-            { label: 'LEFT', value: formatDurationFromMinutes(Math.max(goalMin - totalMin, 0)) },
+            { label: 'TODAY', value: formatDurationFromMinutes(todayMin) },
+            { label: 'TOTAL', value: formatDurationFromMinutes(allTimeTotalMin) },
+            { label: 'LEFT', value: formatDurationFromMinutes(Math.max(goalMin - allTimeTotalMin, 0)) },
           ].map(s => (
             <View key={s.label} style={[styles.statCell, { backgroundColor: cardBg, borderColor: borderCol }]}>
               <ThemedText style={[styles.statCellLabel, { color: subColor }]}>{s.label}</ThemedText>
@@ -280,7 +286,7 @@ export default function DashboardScreen() {
                 </ThemedText>
                 <ThemedText style={[styles.goalSub, { color: subColor }]}>
                   {settings?.goalHours
-                    ? `${formatDurationFromMinutes(Math.max(goalMin - totalMin, 0))} remaining`
+                    ? `${formatDurationFromMinutes(Math.max(goalMin - allTimeTotalMin, 0))} remaining`
                     : 'Tap to set your OJT goal'}
                 </ThemedText>
               </View>
