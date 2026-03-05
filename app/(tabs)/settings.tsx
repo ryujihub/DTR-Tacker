@@ -3,10 +3,13 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useSettings } from '@/utils/SettingsContext';
-import { SystemSettings } from '@/utils/storage';
+import { exportAllData, importAllData, SystemSettings } from '@/utils/storage';
+import { format } from 'date-fns';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
-import React from 'react';
-import { Platform, ScrollView, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 
 export default function SettingsScreen() {
     const { settings, updateSettings } = useSettings();
@@ -20,6 +23,62 @@ export default function SettingsScreen() {
 
     const setTheme = async (theme: SystemSettings['theme']) => {
         await updateSettings({ theme });
+    };
+
+    const [exportBusy, setExportBusy] = useState(false);
+    const [importBusy, setImportBusy] = useState(false);
+
+    const handleExport = async () => {
+        try {
+            setExportBusy(true);
+            const json = await exportAllData();
+            const fileName = `dtr-backup-${format(new Date(), 'yyyy-MM-dd')}.json`;
+
+            if (Platform.OS === 'android') {
+                // Android: let user pick a folder, then write directly there
+                const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+                if (!perms.granted) { setExportBusy(false); return; }
+                const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+                    perms.directoryUri,
+                    fileName,
+                    'application/json'
+                );
+                await FileSystem.writeAsStringAsync(fileUri, json, { encoding: FileSystem.EncodingType.UTF8 });
+                Alert.alert('✅ Saved!', `Backup saved as:\n${fileName}`);
+            } else {
+                // iOS: save to app documents folder (accessible via Files app → On My iPhone)
+                const fileUri = FileSystem.documentDirectory + fileName;
+                await FileSystem.writeAsStringAsync(fileUri, json, { encoding: FileSystem.EncodingType.UTF8 });
+                Alert.alert('✅ Saved!', `Backup saved to Files app:\n${fileName}\n\n(Files → On My iPhone → DTR Tracker)`);
+            }
+        } catch (e: any) {
+            Alert.alert('Export Failed', e?.message ?? 'Something went wrong.');
+        } finally {
+            setExportBusy(false);
+        }
+    };
+
+    const handleImport = async () => {
+        try {
+            setImportBusy(true);
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/json',
+                copyToCacheDirectory: true,
+            });
+            if (result.canceled) { setImportBusy(false); return; }
+            const uri = result.assets[0].uri;
+            const json = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+            const importResult = await importAllData(json);
+            if (importResult.success) {
+                Alert.alert('Import Successful', `✅ Imported ${importResult.recordCount} DTR record(s).\n\nRestart the app or navigate away to see updated data.`);
+            } else {
+                Alert.alert('Import Failed', importResult.error ?? 'Could not read backup file.');
+            }
+        } catch (e: any) {
+            Alert.alert('Import Failed', e?.message ?? 'Something went wrong.');
+        } finally {
+            setImportBusy(false);
+        }
     };
 
     return (
@@ -106,6 +165,53 @@ export default function SettingsScreen() {
                             </View>
                             <IconSymbol name="chevron.right" size={16} color="#C7C7CC" />
                         </TouchableOpacity>
+                    </View>
+                </View>
+
+                <View style={styles.section}>
+                    <ThemedText style={styles.sectionTitle}>DATA & BACKUP</ThemedText>
+                    <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+
+                        {/* Export */}
+                        <TouchableOpacity
+                            style={[styles.row, exportBusy && styles.rowDisabled]}
+                            onPress={handleExport}
+                            disabled={exportBusy || importBusy}
+                            activeOpacity={0.7}
+                        >
+                            <View style={styles.rowLabelGroup}>
+                                <IconSymbol name="square.and.arrow.up" size={20} color="#34C759" />
+                                <View>
+                                    <ThemedText style={styles.rowTitle}>Export DTR Backup</ThemedText>
+                                    <ThemedText style={styles.rowDesc}>Save all records as a .json file</ThemedText>
+                                </View>
+                            </View>
+                            {exportBusy
+                                ? <ActivityIndicator size="small" color="#34C759" />
+                                : <IconSymbol name="chevron.right" size={16} color="#C7C7CC" />}
+                        </TouchableOpacity>
+
+                        <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+
+                        {/* Import */}
+                        <TouchableOpacity
+                            style={[styles.row, importBusy && styles.rowDisabled]}
+                            onPress={handleImport}
+                            disabled={exportBusy || importBusy}
+                            activeOpacity={0.7}
+                        >
+                            <View style={styles.rowLabelGroup}>
+                                <IconSymbol name="square.and.arrow.down" size={20} color="#007AFF" />
+                                <View>
+                                    <ThemedText style={styles.rowTitle}>Import DTR Backup</ThemedText>
+                                    <ThemedText style={styles.rowDesc}>Restore records from a .json file</ThemedText>
+                                </View>
+                            </View>
+                            {importBusy
+                                ? <ActivityIndicator size="small" color="#007AFF" />
+                                : <IconSymbol name="chevron.right" size={16} color="#C7C7CC" />}
+                        </TouchableOpacity>
+
                     </View>
                 </View>
 
@@ -206,6 +312,9 @@ const styles = StyleSheet.create({
         height: 1,
         backgroundColor: '#E5E5EA',
         marginLeft: 48,
+    },
+    rowDisabled: {
+        opacity: 0.5,
     },
     footer: {
         marginTop: 20,

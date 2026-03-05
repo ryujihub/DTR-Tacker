@@ -144,3 +144,77 @@ export const clearAllData = async () => {
     console.error('[Storage] Error clearing data:', e);
   }
 };
+
+// ─── EXPORT ──────────────────────────────────────────────────────────────────
+
+export interface DtrBackup {
+  version: number;
+  exportedAt: string;         // ISO timestamp
+  records: DailyRecord[];
+  profile: UserProfile;
+  settings: SystemSettings;
+}
+
+/**
+ * Bundles all app data into a JSON string ready for export.
+ */
+export const exportAllData = async (): Promise<string> => {
+  const [records, profile, settings] = await Promise.all([
+    getDailyRecords(),
+    getProfile(),
+    getSettings(),
+  ]);
+  const backup: DtrBackup = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    records,
+    profile,
+    settings,
+  };
+  return JSON.stringify(backup, null, 2);
+};
+
+// ─── IMPORT ──────────────────────────────────────────────────────────────────
+
+export interface ImportResult {
+  success: boolean;
+  recordCount: number;
+  error?: string;
+}
+
+/**
+ * Parses a backup JSON string, validates it, and writes all data to storage.
+ * Existing data is fully replaced.
+ */
+export const importAllData = async (json: string): Promise<ImportResult> => {
+  try {
+    const backup: DtrBackup = JSON.parse(json);
+
+    // Basic validation
+    if (!backup || !Array.isArray(backup.records)) {
+      return { success: false, recordCount: 0, error: 'Invalid backup file format.' };
+    }
+
+    const engine = getEngine();
+
+    // Write records
+    const sorted = [...backup.records].sort((a, b) => b.date.localeCompare(a.date));
+    await engine.setItem(RECORDS_KEY, JSON.stringify(sorted));
+
+    // Write profile (if present)
+    if (backup.profile && typeof backup.profile === 'object') {
+      await engine.setItem(PROFILE_KEY, JSON.stringify(backup.profile));
+    }
+
+    // Write settings (preserve hasSeenOnboarding: true so we don't re-trigger onboarding)
+    if (backup.settings && typeof backup.settings === 'object') {
+      const merged = { ...backup.settings, hasSeenOnboarding: true };
+      await engine.setItem(SETTINGS_KEY, JSON.stringify(merged));
+    }
+
+    return { success: true, recordCount: backup.records.length };
+  } catch (e: any) {
+    console.error('[Storage] Import error:', e);
+    return { success: false, recordCount: 0, error: e?.message ?? 'Unknown error.' };
+  }
+};

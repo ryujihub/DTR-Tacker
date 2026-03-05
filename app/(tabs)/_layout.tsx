@@ -6,7 +6,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 
 
 export default function TabLayout() {
-  
+
 
   return (
     <Tabs
@@ -37,6 +37,13 @@ export default function TabLayout() {
         options={{
           title: 'History',
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="list.bullet" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Calendar',
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="calendar" color={color} />,
         }}
       />
       <Tabs.Screen
